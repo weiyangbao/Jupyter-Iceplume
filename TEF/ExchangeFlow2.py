@@ -117,8 +117,8 @@ def ef_TEF(u, s, da, xi):
 
 
       
-    tef_q_lp = tef_q[275:,:].mean(0)
-    tef_qs_lp = tef_qs[275:,:].mean(0)
+    tef_q_lp = tef_q[88:,:].mean(0)
+    tef_qs_lp = tef_qs[88:,:].mean(0)
     Qv = np.zeros((NT, NS))
     Qs = np.zeros((NT, NS))
     # Organized from low s to high s
