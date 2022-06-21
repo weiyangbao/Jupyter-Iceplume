@@ -367,7 +367,7 @@ def efflux_reflux(Qin, Qout, Sin, Sout, error=False):
     B = np.array([Q1_adj, F1_adj, Q0_adj, F0_adj])
     X = np.linalg.solve(A,B) # a11, a01, a10, a00
     
-    return X
+    return X, q0_adj, q1_adj, Q0_adj, Q1_adj
     
     
     
