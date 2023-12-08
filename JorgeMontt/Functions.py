@@ -106,6 +106,24 @@ def filt_godin(data):
 
 
 
+def filt_godin_mat(data):
+    """
+    Input: ND numpy array of HOURLY, with time on axis 0.
+    Output: Array of the same size, filtered with 24-24-25 Godin filter,
+        padded with nan's
+    """
+    filt = godin_shape()
+    n = np.floor(len(filt)/2).astype(int)
+    sh = data.shape
+    df = data.flatten('F')
+    dfs = np.convolve(df, filt, mode = 'same')
+    smooth = dfs.reshape(sh, order='F')
+    smooth[:n,:] = np.nan
+    smooth[-n:,:] = np.nan
+    return smooth
+
+
+
 def tef_transport(datapath, case_id, xid):    
     # Calculate TEF transports at cross-fjord section xid
     State0 = xr.open_dataset(datapath+'state_' + str(format(case_id,'03d')) + '.nc')
