@@ -153,6 +153,58 @@ def tef_transport(datapath, case_id, xid):
 
 
 
+def efflux_reflux(Qin, Qout, Sin, Sout, error=False):
+    
+    """
+    Calculate efflux-reflux coefficients from TEF transports
+
+    Output:
+    - X[a11, a01, a10, a00]
+
+    """
+    q0 = Qin[0] # q: inflow to the segment
+    Q1 = Qin[-1] # Q: outflow to the segment    
+    Q0 = -Qout[0]
+    q1 = -Qout[-1]
+    
+    f0 = Sin[0]*q0
+    F0 = Sout[0]*Q0
+    f1 = Sout[-1]*q1 
+    F1 = Sin[-1]*Q1    
+    # make adjustments to enforce volume and salt conservation
+    dq = (q0+q1) - (Q0+Q1)
+    df = (f0+f1) - (F0+F1)   
+    N = 2 # Number of sections for the segment
+    
+    # q0_adj+q1_adj = Q0_adj+Q1_adj = (q0+q1+Q0+Q1)/2
+    q0_adj = q0 - 0.5*dq/N
+    q1_adj = q1 - 0.5*dq/N
+    Q0_adj = Q0 + 0.5*dq/N
+    Q1_adj = Q1 + 0.5*dq/N
+    
+    f0_adj = f0 - 0.5*df/N
+    f1_adj = f1 - 0.5*df/N
+    F0_adj = F0 + 0.5*df/N
+    F1_adj = F1 + 0.5*df/N
+    
+    # adjust the salinities to match
+    s0_adj = f0_adj / q0_adj
+    s1_adj = f1_adj / q1_adj
+    S0_adj = F0_adj / Q0_adj
+    S1_adj = F1_adj / Q1_adj
+    
+    if error:
+        print(' - Volume Flux adjustment = %0.5f' % (dq/(Q0+Q1)))
+        print(' -   Salt Flux adjustment = %0.5f' % (df/(F0+F1)))
+    
+    A = np.array([[q1_adj, q0_adj, 0, 0], [f1_adj, f0_adj, 0, 0], [0, 0, q1_adj, q0_adj], [0, 0, f1_adj, f0_adj]])
+    B = np.array([Q1_adj, F1_adj, Q0_adj, F0_adj])
+    X = np.linalg.solve(A,B) # a11, a01, a10, a00
+    
+    return X, q0_adj, q1_adj, Q0_adj, Q1_adj
+
+
+
 def along_fjord_state(datapath, case_id):
     # Get along-fjord properties in Time, Depth, Distance dimensions
     
