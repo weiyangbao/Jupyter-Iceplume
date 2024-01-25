@@ -89,6 +89,27 @@ def godin_shape():
     filt[:35] = filt[:35:-1]
     return filt
 
+# def godin_shape(interval=1):
+#     # Calculate the number of points for 24 hours based on the interval
+#     points_per_hour = int(np.round(1 / interval))
+#     points_24h = 24 * points_per_hour
+#     points_25h = 25 * points_per_hour
+
+#     # Adjust filter length
+#     filter_length = 2 * points_24h + points_25h
+#     filt = np.NaN * np.ones(filter_length)
+
+#     # Calculate filter coefficients
+#     k = np.arange(points_24h)
+#     mid = points_24h
+#     end = mid + points_25h
+#     filt[mid:end] = (0.5 / (points_24h**2 * points_25h)) * (points_25h**2 - (points_25h - k) * (points_25h + 1 - k))
+#     k = np.arange(points_24h, end)
+#     filt[end:filter_length] = (0.5 / (points_24h**2 * points_25h)) * (end - k) * (end + 1 - k)
+#     filt[:mid] = filt[:mid:-1]
+
+#     return filt
+
 def filt_godin(data):
     """
     Input: 1D numpy array of HOURLY values
@@ -97,9 +118,17 @@ def filt_godin(data):
     """
     filt = godin_shape()
     npad = np.floor(len(filt)/2).astype(int)
-    smooth = np.convolve(data, filt, mode = 'same')
-    smooth[:npad] = np.nan
-    smooth[-npad:] = np.nan
+
+    # Reflect data at the edges
+    reflected_data = np.concatenate([data[npad:0:-1], data, data[-1:-npad-1:-1]])
+    # Apply convolution
+    smooth = np.convolve(reflected_data, filt, mode='same')
+    # Remove padding
+    smooth = smooth[npad:-npad]
+    
+    # smooth = np.convolve(data, filt, mode = 'same')
+    # smooth[:npad] = np.nan
+    # smooth[-npad:] = np.nan
     # smooth[:npad] = data[:npad]
     # smooth[-npad:] = data[-npad:]
     return smooth
@@ -236,4 +265,58 @@ def along_fjord_state(datapath, case_id):
     w = wzy.mean(axis=2)
 
     return x_dist, depth, time, pt, s, rho, u, w
+
+
+def Qsm(datapath, case_id):
+    # Read cell-averaged ice front melt rate (submarine melt) fro Iceplume diagnostic
     
+    file0 = xr.open_dataset(datapath+'/icefrntA_' + str(format(case_id,'03d')) + '.nc')
+    file = file0.isel(T=~file0.get_index("T").duplicated())
+
+    Grid = xr.open_dataset(datapath+'grid.nc')
+    grid = Grid.isel(X=slice(200), Xp1=slice(201), Y=slice(35,45))
+    area = grid.drF * grid.dyF * grid.HFacC
+
+    diagT = file.T.data
+    MR = file.icefrntA.isel(X=1,Y=slice(35, 45)).data # Melt rate at the icefront (m/d)
+    Qsm_a = np.sum(MR*area.isel(X=1).data, axis=(1,2))/(24*3600) # Submarine melting flux (m^3/s)
+    Qsm_z = np.sum(MR*area.isel(X=1).data, axis=2)/(24*3600) # Vertical profile evolution in time
+
+    return diagT, Qsm_a, Qsm_z
+
+
+
+def Qsm_depend(datapath, case_id, zrange):
+    # Calculate near-glacier Temperature and Stratification
+    file0 = xr.open_dataset(datapath+'state_' + str(format(case_id,'03d')) + '.nc')
+    # De-duplicating data
+    file = file0.isel(T=~file0.get_index("T").duplicated())
+    state = file.isel(X=slice(200), Xp1=slice(201), Y=slice(35, 45), Yp1=slice(35, 45))
+    state = state.sel(Z=slice(zrange[0],zrange[1]))
+    
+    Grid = xr.open_dataset(datapath+'grid.nc')
+    grid = Grid.isel(X=slice(200), Xp1=slice(201), Y=slice(35,45))
+    grid = grid.sel(Z=slice(zrange[0],zrange[1]))
+    area = grid.drF * grid.dyF * grid.HFacC
+
+    xid = 1
+    A = area.isel(X=xid).data
+    Tng = (state.Temp.data[:,:,:,xid]*A).sum(axis=(1,2)) / A.sum()
+
+    depths = state.Z.data
+    # Potential temp
+    Ttz = state.Temp.data[:,:,:,xid].mean(2) # Temp
+    # Pressure and Density
+    pres = gsw.p_from_z(depths, -48.25)
+    Stz = state.S.data[:,:,:,xid].mean(2)    
+    N2, Pmid = gsw.Nsquared(Stz,Ttz,pres, -48.25,axis=1)
+    #Zmid = gsw.z_from_p(Pmid,-48.25)
+
+    # Calculate depth intervals
+    depth_intervals = np.abs(np.diff(depths))
+
+    # Calculate the weighted average of N^2
+    #weighted_N_squared = N_squared[:-1] * depth_intervals
+    Nsq_ng = np.sum(N2*depth_intervals,axis=1) / np.sum(depth_intervals)
+    
+    return Tng, Nsq_ng
