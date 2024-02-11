@@ -267,7 +267,7 @@ def along_fjord_state(datapath, case_id):
     return x_dist, depth, time, pt, s, rho, u, w
 
 
-def Qsm(datapath, case_id):
+def Qsm(datapath, case_id, zrange):
     # Read cell-averaged ice front melt rate (submarine melt) fro Iceplume diagnostic
     
     file0 = xr.open_dataset(datapath+'/icefrntA_' + str(format(case_id,'03d')) + '.nc')
@@ -276,6 +276,10 @@ def Qsm(datapath, case_id):
     Grid = xr.open_dataset(datapath+'grid.nc')
     grid = Grid.isel(X=slice(200), Xp1=slice(201), Y=slice(35,45))
     area = grid.drF * grid.dyF * grid.HFacC
+    #area.loc[dict(Z=slice(zrange[0], zrange[1]))] = 0
+    condition = (area.Z >= zrange[1]) & (area.Z <= zrange[0])
+    area = area.where(condition, other=0)
+    
 
     diagT = file.T.data
     MR = file.icefrntA.isel(X=1,Y=slice(35, 45)).data # Melt rate at the icefront (m/d)
