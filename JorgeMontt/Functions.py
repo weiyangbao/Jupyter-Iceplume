@@ -324,3 +324,27 @@ def Qsm_depend(datapath, case_id, zrange):
     Nsq_ng = np.sum(N2*depth_intervals,axis=1) / np.sum(depth_intervals)
     
     return Tng, Nsq_ng
+
+
+def zprofile(datapath, case_id, xid):
+    # Get vertical profiles at specified location
+    
+    file0 = xr.open_dataset(datapath+'state_' + str(format(case_id,'03d')) + '.nc')
+    # De-duplicating data
+    file = file0.isel(T=~file0.get_index("T").duplicated())
+    state = file.isel(X=slice(200), Xp1=slice(201), Y=slice(35, 45), Yp1=slice(35, 45))
+    
+    # Extracting data and converting to NumPy arrays
+    time = state.T.data
+    depth = state.Z.data
+
+    pt = state.Temp.mean('Y').data
+    s = state.S.mean('Y').data
+
+    pres = gsw.p_from_z(depth, -48.25)
+    N2, Pmid = gsw.Nsquared(s[:,:,xid],pt[:,:,xid],pres, -48.25,axis=1)
+    # Along-fjord velocity
+    u0 = state.U.mean('Y').data
+    u = (u0[:, :, 1:] + u0[:, :, :-1]) / 2
+    
+    return depth, time, pt[:,:,xid], s[:,:,xid], u[:,:,xid], N2
