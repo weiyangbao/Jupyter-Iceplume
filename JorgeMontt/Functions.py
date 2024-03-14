@@ -267,8 +267,38 @@ def along_fjord_state(datapath, case_id):
     return x_dist, depth, time, pt, s, rho, u, w
 
 
+def cross_fjord_state(datapath, case_id, xid):
+    # Get cross-fjord properties in Time, Depth, Distance dimensions
+    
+    file0 = xr.open_dataset(datapath+'state_' + str(format(case_id,'03d')) + '.nc')
+    # De-duplicating data
+    file = file0.isel(T=~file0.get_index("T").duplicated())
+    state = file.isel(X=slice(200), Xp1=slice(201), Y=slice(35, 45), Yp1=slice(35, 46))
+    
+    # Extracting data and converting to NumPy arrays
+    time = state.T.data
+    y_dist = state.Y.data - 25500
+    depth = state.Z.data
+    pres = gsw.p_from_z(depth, -48.25)
+    pt = state.Temp.data[:,:,:,xid]
+    s = state.S.data[:,:,:,xid]
+    p = np.broadcast_to(pres[np.newaxis, :, np.newaxis], pt.shape)
+    rho = gsw.rho(s, pt, p)
+
+    # Along-fjord velocity
+    u0 = (state.U.data[:,:,:,1:] + state.U.data[:,:,:,:-1]) / 2
+    u = u0[:,:,:,xid]
+
+    # Cross-fjord velocity
+    v0 = state.V.data[:,:,:,xid]
+    v = (v0[:,:,1:]+v0[:,:,:-1]) / 2
+
+    return y_dist, depth, time, pt, s, rho, u, v
+
+
+
 def Qsm(datapath, case_id, zrange):
-    # Read cell-averaged ice front melt rate (submarine melt) fro Iceplume diagnostic
+    # Read cell-averaged ice front melt rate (submarine melt) from Iceplume diagnostic
     
     file0 = xr.open_dataset(datapath+'/icefrntA_' + str(format(case_id,'03d')) + '.nc')
     file = file0.isel(T=~file0.get_index("T").duplicated())
@@ -304,24 +334,34 @@ def Qsm_depend(datapath, case_id, zrange):
     area = grid.drF * grid.dyF * grid.HFacC
 
     xid = 1
+    depths = -1*state.Z.data
     A = area.isel(X=xid).data
-    Tng = (state.Temp.data[:,:,:,xid]*A).sum(axis=(1,2)) / A.sum()
+    #Tng = (state.Temp.data[:,:,:,xid]*A).sum(axis=(1,2)) / A.sum()
 
-    depths = state.Z.data
     # Potential temp
     Ttz = state.Temp.data[:,:,:,xid].mean(2) # Temp
+    Tng = np.trapz(Ttz, depths, axis=1) / (depths[-1]-depths[0])
     # Pressure and Density
-    pres = gsw.p_from_z(depths, -48.25)
-    Stz = state.S.data[:,:,:,xid].mean(2)    
+    pres = gsw.p_from_z(-depths, -48.25)
+    Stz = state.S.data[:,:,:,xid].mean(2) 
+    
+    # Ptz = np.broadcast_to(pres[np.newaxis, :], Ttz.shape)
+    # den = gsw.rho(Stz, Ttz, Ptz)    
+    # # Calculate the reference density for each time step
+    # rho_0 = np.mean(den, axis=1)
+    # N2 = np.empty([den.shape[0],den.shape[1]-1])
+    # for i in range(den.shape[0]):
+    # # Calculate density gradient along the depth for this time step
+    #     density_gradient = np.diff(den[i,:]) / (-np.diff(depths))
+    #     N2[i,:] = -9.81 / rho_0[i] * density_gradient
     N2, Pmid = gsw.Nsquared(Stz,Ttz,pres, -48.25,axis=1)
-    #Zmid = gsw.z_from_p(Pmid,-48.25)
 
     # Calculate depth intervals
     depth_intervals = np.abs(np.diff(depths))
-
     # Calculate the weighted average of N^2
-    #weighted_N_squared = N_squared[:-1] * depth_intervals
-    Nsq_ng = np.sum(N2*depth_intervals,axis=1) / np.sum(depth_intervals)
+    #Nsq_ng = np.sum(N2*depth_intervals,axis=1) / np.sum(depth_intervals)
+    mid_depths = (depths[1:]+depths[:-1])/2
+    Nsq_ng = np.trapz(N2, mid_depths, axis=1) / (mid_depths[-1]-mid_depths[0])
     
     return Tng, Nsq_ng
 
